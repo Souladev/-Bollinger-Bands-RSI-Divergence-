@@ -1,0 +1,66 @@
+//@version=5
+indicator("Bollinger Bands + RSI Divergence", overlay=true)
+
+// Inputs
+length = input(20, title="Bollinger Bands Length")
+mult = input(2.0, title="Bollinger Bands StdDev")
+rsiLength = input(14, title="RSI Length")
+divergenceLookback = input(5, title="Divergence Lookback Period")
+volumeFilter = input(true, title="Use Volume Filter")
+volumeLength = input(20, title="Volume SMA Length")
+
+// Bollinger Bands Calculation
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upper = basis + dev
+lower = basis - dev
+
+// RSI Calculation
+rsi = ta.rsi(close, rsiLength)
+
+// Volume Filter
+volumeAvg = ta.sma(volume, volumeLength)
+volumeSpike = volume > volumeAvg * 1.5
+
+// Divergence Detection Function
+f_detectDivergence() =>
+    // Bearish Divergence (Price Higher High, RSI Lower High)
+    priceHH = ta.highest(high, divergenceLookback)
+    rsiHH = ta.highest(rsi, divergenceLookback)
+    bearishDiv = high >= priceHH and rsi <= rsiHH and not (priceHH == priceHH[1] and rsiHH == rsiHH[1])
+    
+    // Bullish Divergence (Price Lower Low, RSI Higher Low)
+    priceLL = ta.lowest(low, divergenceLookback)
+    rsiLL = ta.lowest(rsi, divergenceLookback)
+    bullishDiv = low <= priceLL and rsi >= rsiLL and not (priceLL == priceLL[1] and rsiLL == rsiLL[1])
+    
+    [bullishDiv, bearishDiv]
+
+[bullishDiv, bearishDiv] = f_detectDivergence()
+
+// Entry Conditions
+longCondition = (close < lower and bullishDiv) or (ta.crossover(close, lower) and bullishDiv)
+shortCondition = (close > upper and bearishDiv) or (ta.crossunder(close, upper) and bearishDiv)
+
+// Apply volume filter if enabled
+longEntry = volumeFilter ? (longCondition and volumeSpike) : longCondition
+shortEntry = volumeFilter ? (shortCondition and volumeSpike) : shortCondition
+
+// Plot Bollinger Bands
+plot(basis, "Basis", color=color.blue)
+plot(upper, "Upper", color=color.red)
+plot(lower, "Lower", color=color.green)
+
+// Plot Signals - Using arrows for better visibility
+plotshape(series=longEntry, title="Buy Signal", style=shape.triangleup, 
+     location=location.belowbar, color=color.new(color.green, 0), size=size.normal)
+plotshape(series=shortEntry, title="Sell Signal", style=shape.triangledown, 
+     location=location.abovebar, color=color.new(color.red, 0), size=size.normal)
+
+// Background Color for Divergence Zones
+bgcolor(bullishDiv ? color.new(color.green, 90) : na)
+bgcolor(bearishDiv ? color.new(color.red, 90) : na)
+
+// Alerts for trading signals
+alertcondition(longEntry, title="Buy Signal Alert", message="BB RSI Buy Signal")
+alertcondition(shortEntry, title="Sell Signal Alert", message="BB RSI Sell Signal")
